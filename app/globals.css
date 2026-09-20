@@ -322,11 +322,12 @@ button {
   display: grid;
   place-items: center;
   padding: 28px;
+  overflow: auto;
   background: #1e2c278f;
 }
 .detail-panel {
   width: min(100%, 900px);
-  max-height: calc(100vh - 56px);
+  max-height: calc(100dvh - 56px);
   overflow: auto;
   border-radius: 7px;
   background: #fffefa;
@@ -1017,14 +1018,43 @@ button {
   }
 }
 @media (max-width: 680px) {
+  body {
+    overflow-x: hidden;
+  }
+  .content,
+  .page-content {
+    min-width: 0;
+  }
+  .topbar {
+    width: 100%;
+  }
+  .detail-backdrop {
+    display: block;
+    padding: 10px;
+  }
+  .detail-panel {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    margin: 0 auto;
+  }
+  .detail-image {
+    height: min(52dvh, 380px);
+    min-height: 0;
+  }
+  .detail-info {
+    overflow-x: hidden;
+  }
+  .detail-info h2 {
+    max-width: calc(100% - 40px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .detail-backdrop {
     padding: 12px;
   }
   .detail-panel {
-    max-height: calc(100vh - 24px);
-  }
-  .detail-image {
-    min-height: 300px;
+    max-height: calc(100dvh - 24px);
   }
   .detail-info {
     display: block;
@@ -1048,5 +1078,8 @@ button {
   }
   .detail-next {
     right: 10px;
+  }
+  .favorite {
+    opacity: 1;
   }
 }

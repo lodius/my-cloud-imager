@@ -15,7 +15,6 @@ type GalleryPhoto = {
   location: string;
   image: string;
   source?: string;
-  source?: string;
   filename?: string;
   originalUrl?: string;
   originalName?: string;
@@ -152,7 +151,6 @@ function toGalleryPhoto(photo: StoredPhoto): GalleryPhoto {
     location,
     image: photo.thumbnailUrl ?? photo.url,
     source: "Local upload",
-    source: "Local upload",
     filename: photo.filename,
     originalName: photo.originalName,
     mimeType: photo.mimeType,
@@ -185,6 +183,7 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
+  const [demoPhotoState, setDemoPhotoState] = useState<Record<string, { isFavorite?: boolean; isArchived?: boolean }>>({});
   useEffect(() => {
     fetch("/api/auth/session")
       .then((response) => response.json())
@@ -210,7 +209,9 @@ export default function Home() {
       })
       .catch(() => setAuthLoading(false));
   }, []);
-  const galleryPhotos = storedPhotos.length > 0 ? storedPhotos : photos;
+  const galleryPhotos = storedPhotos.length > 0
+    ? storedPhotos
+    : photos.map((photo) => ({ ...photo, ...demoPhotoState[photo.title] }));
   const viewPhotos =
     activeView === "Favorites"
       ? galleryPhotos.filter((photo) => photo.isFavorite)
@@ -228,7 +229,7 @@ export default function Home() {
   );
   const selectedIndex = selectedPhoto
     ? filteredPhotos.findIndex(
-        (photo) => photo.filename === selectedPhoto.filename,
+        (photo) => (photo.filename ?? photo.title) === (selectedPhoto.filename ?? selectedPhoto.title),
       )
     : -1;
   const moveSelection = useCallback(
@@ -303,8 +304,24 @@ export default function Home() {
     filename: string | undefined,
     action: "favorite" | "archive",
     value: boolean,
+    photoTitle?: string,
   ) {
-    if (!filename) return;
+    if (!filename) {
+      const title = photoTitle ?? selectedPhoto?.title;
+      if (!title) return;
+      setDemoPhotoState((current) => ({
+        ...current,
+        [title]: {
+          ...current[title],
+          ...(action === "favorite" ? { isFavorite: value } : { isArchived: value }),
+        },
+      }));
+      setSelectedPhoto((current) => current?.title === title ? {
+          ...current,
+          ...(action === "favorite" ? { isFavorite: value } : { isArchived: value }),
+        } : current);
+      return;
+    }
     const response = await fetch(
       `/api/photos/${encodeURIComponent(filename)}`,
       {
@@ -706,6 +723,7 @@ export default function Home() {
                             photo.filename,
                             "favorite",
                             !photo.isFavorite,
+                            photo.title,
                           );
                         }}
                       >

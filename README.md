@@ -5,6 +5,7 @@ Lumen is a private, self-hosted photo library for a Raspberry Pi. It is accessed
 ## Features
 
 - Responsive Google Photos-style library
+- Mobile-responsive gallery, login, albums, and image preview
 - Password login with HTTP-only sessions
 - Multiple photo uploads with validation and SHA-256 duplicate detection
 - SQLite metadata indexing

@@ -63,7 +63,7 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Responsive photo library layout | Done | Desktop and mobile layouts are implemented. |
+| Responsive photo library layout | Done | Desktop and mobile layouts are implemented, including a bounded scrollable image preview for phone screens. |
 | Sidebar navigation | Done | Library, Albums, Favorites, and Archive controls are present. |
 | Search field | Partial | Filters the active gallery records by filename/title and location. Metadata search is still limited. |
 | Albums view | Partial | Loads persistent albums and counts when available, with sample cards as an empty-library fallback. |
@@ -73,7 +73,7 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 | Local file persistence | Done | Files are uniquely named, sanitized, and written under `MEDIA_ROOT`. |
 | SQLite metadata index | Partial | Uploads are indexed with file, date, EXIF, dimension, and state metadata. Processing state remains pending. |
 | Display uploaded photos | Done | Indexed uploads are fetched through controlled thumbnail URLs and can be opened in a protected detail view with navigation and detailed image facts. |
-| Favorites and archive state | Partial | Favorite/archive flags persist in SQLite and the sidebar filters them; photo detail controls and bulk actions remain. |
+| Favorites and archive state | Partial | Uploaded photo flags persist in SQLite; sample photos update locally for the demo, while bulk actions and full archive controls remain. |
 | Album creation | Partial | Named albums persist in SQLite through `/api/albums`; photo membership and album browsing are now implemented. |
 | Controlled media serving | Done | Indexed files are served through `/api/media/[filename]` and `/api/thumbnails/[filename]`; the app fails closed when authentication is not configured. |
 | Upload confirmation state | Done | The UI shows the number of newly accepted uploads. |
