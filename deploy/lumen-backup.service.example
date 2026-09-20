@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup Lumen photo library
+
+[Service]
+Type=oneshot
+User=lumen
+Group=lumen
+WorkingDirectory=/opt/lumen
+EnvironmentFile=/etc/lumen/lumen.env
+ExecStart=/usr/bin/npm run backup

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Lumen photo backup
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+Unit=lumen-backup.service
+
+[Install]
+WantedBy=timers.target

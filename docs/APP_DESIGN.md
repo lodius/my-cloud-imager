@@ -31,10 +31,19 @@ Browser
 Next.js application on Raspberry Pi
   |-- UI: app/page.tsx
   |-- Upload API: app/api/upload/route.ts
-  |-- Future metadata API
+  |-- Photo metadata API: app/api/photos/route.ts
+  |-- Album API: app/api/albums/route.ts
+  |-- Auth API: app/api/auth/*
+  |-- Storage API: app/api/storage/route.ts
+  |-- Controlled media API: app/api/media/[filename]/route.ts
+  |-- Thumbnail API: app/api/thumbnails/[filename]/route.ts
   v
 Durable media directory
   MEDIA_ROOT=/mnt/photos
+
+Operational scripts
+  |-- npm run backup
+  |-- npm run restore
 ```
 
 ### Current stack
@@ -44,7 +53,7 @@ Durable media directory
 - Tailwind CSS plus custom responsive CSS
 - Node.js runtime for the upload route
 - Local filesystem storage
-- Planned: SQLite for metadata and job state
+- SQLite for photo metadata, album membership, favorites, archive state, and future job state
 
 ### Storage rule
 
@@ -56,15 +65,20 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 | --- | --- | --- |
 | Responsive photo library layout | Done | Desktop and mobile layouts are implemented. |
 | Sidebar navigation | Done | Library, Albums, Favorites, and Archive controls are present. |
-| Search field | Demo | Filters the hard-coded sample records by title and location. |
-| Albums view | Demo | Displays hard-coded sample albums and counts. |
+| Search field | Partial | Filters the active gallery records by filename/title and location. Metadata search is still limited. |
+| Albums view | Partial | Loads persistent albums and counts when available, with sample cards as an empty-library fallback. |
 | Sample gallery | Demo | Uses remote image placeholders and sample metadata. |
 | Multiple photo picker | Done | The UI accepts multiple image files. |
-| Upload API | Done | `POST /api/upload` accepts multipart files. |
-| Local file persistence | Done | Files are sanitized and written under `MEDIA_ROOT`. |
+| Upload API | Done | `POST /api/upload` accepts multipart files, validates them, detects duplicates, and creates metadata records. |
+| Local file persistence | Done | Files are uniquely named, sanitized, and written under `MEDIA_ROOT`. |
+| SQLite metadata index | Partial | Uploads are indexed with file, date, EXIF, dimension, and state metadata. Processing state remains pending. |
+| Display uploaded photos | Done | Indexed uploads are fetched through controlled thumbnail URLs and can be opened in a protected detail view with navigation and detailed image facts. |
+| Favorites and archive state | Partial | Favorite/archive flags persist in SQLite and the sidebar filters them; photo detail controls and bulk actions remain. |
+| Album creation | Partial | Named albums persist in SQLite through `/api/albums`; photo membership and album browsing are now implemented. |
+| Controlled media serving | Done | Indexed files are served through `/api/media/[filename]` and `/api/thumbnails/[filename]`; the app fails closed when authentication is not configured. |
 | Upload confirmation state | Done | The UI shows the number of newly accepted uploads. |
 | Tailscale/private-library presentation | Done | The UI and documentation assume private access. Actual Tailscale configuration is external to this app. |
-| Storage indicator | Demo | The displayed 42% value is currently static. |
+| Storage indicator | Done | The sidebar reads filesystem capacity and indexed media bytes from the protected storage API. |
 | Production build | Done | `npm run build` passes. |
 | Linting | Done | `npm run lint` passes. |
 
@@ -72,56 +86,57 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 
 | Feature | Status | Priority | Description |
 | --- | --- | --- | --- |
-| Display uploaded photos | Not started | P0 | Read stored files and render them in the main library. |
-| SQLite metadata index | Not started | P0 | Track file path, size, MIME type, dates, checksum, and processing state. |
-| Thumbnail generation | Not started | P0 | Generate smaller images so the Pi does not send originals for every grid tile. |
-| Real dates and EXIF data | Not started | P1 | Extract capture date, camera data, and GPS location when available. |
-| Persistent albums | Not started | P1 | Store albums and photo membership in SQLite. |
-| Favorites and archive | Not started | P1 | Persist these states instead of only showing navigation controls. |
-| Accurate storage usage | Not started | P1 | Calculate usage from the configured media volume. |
-| Delete and download | Not started | P1 | Add safe file operations with confirmation and audit-friendly behavior. |
-| Authentication | Not started | P0 | Add an application-level login or trusted identity layer before wider use. |
-| Upload limits and validation | Not started | P0 | Validate MIME type, file size, image dimensions, and request limits. |
-| Duplicate detection | Not started | P2 | Use a checksum to avoid storing the same file repeatedly. |
+| Display uploaded photos | Done | P0 | Read indexed files, render thumbnails, and open protected original detail views with arrow-key, button, and metadata navigation. |
+| SQLite metadata index | Partial | P0 | Tracks filename, type, size, dimensions, dates, EXIF, and state metadata. Processing state remains. |
+| Thumbnail generation | Done | P0 | Uploads generate 640px WebP thumbnails and the gallery uses their controlled URL. |
+| Real dates and EXIF data | Done | P1 | Extract capture date, camera model, and GPS coordinates when available; upload time is the fallback. |
+| Persistent albums | Done | P1 | Album records, membership tables, album browsing, counts, and photo assignment are implemented. |
+| Favorites and archive | Partial | P1 | Favorite/archive state is persisted and filterable; richer management actions remain. |
+| Accurate storage usage | Done | P1 | Calculate filesystem usage and media-directory bytes from the configured volume. |
+| Delete and download | Done | P1 | Protected original download and confirmed deletion remove database memberships, originals, and thumbnails together. |
+| Authentication | Done | P0 | Password authentication with HTTP-only signed session cookies protects the UI and media APIs. The app fails closed when `AUTH_PASSWORD` is missing; set `AUTH_COOKIE_SECURE=true` only behind HTTPS. |
+| Setup and login UX | Done | P0 | Login-first entry, setup checklist, password visibility toggle, loading feedback, and inline errors are implemented responsively. |
+| Upload limits and validation | Done | P0 | Reject unsupported formats, files over 50 MB by default, and images over 10000px per dimension. |
+| Duplicate detection | Done | P2 | SHA-256 checksums prevent the same file from being stored repeatedly. |
 | Background processing | Not started | P1 | Move EXIF extraction and thumbnails out of the upload request. |
-| Backup workflow | Not started | P0 | Define and test a second copy of originals and the database. |
+| Backup workflow | Partial | P0 | `npm run backup` and guarded `npm run restore` are available; a scheduled systemd timer is templated, while a real Pi restore drill remains. |
 | HTTPS/reverse proxy | Not started | P0 | Add a controlled proxy and security headers for deployment. |
-| systemd service | Not started | P1 | Start and restart the production server reliably on the Pi. |
+| systemd service | Partial | P1 | App and daily backup unit/timer templates exist under `deploy/`; they must be installed and configured on the Pi. |
 | Offline/native clients | Not started | P2 | Consider only after the browser workflow is reliable. |
 
 ## 5. Recommended Development Roadmap
 
 ### Phase 1: Make the library real
 
-1. Add a SQLite database.
-2. Create a photo record for every successful upload.
-3. Add a read API that returns photo records and thumbnail URLs.
-4. Replace sample gallery records with API data.
-5. Serve originals and thumbnails through controlled routes.
+1. Add a SQLite database. Done.
+2. Create a photo record for every successful upload. Done.
+3. Add a read API that returns photo records and thumbnail URLs. Done.
+4. Replace sample gallery records with API data. Done, with sample fallback for an empty database.
+5. Serve originals and thumbnails through controlled routes. Done.
 
 ### Phase 2: Make uploads safe and useful
 
 1. Validate image type and file size.
 2. Generate a stable ID and SHA-256 checksum per file.
-3. Extract EXIF dates and GPS metadata.
+3. Extract EXIF dates and GPS metadata. Done; images without EXIF use upload time and no location.
 4. Generate thumbnails in a background job.
 5. Add upload progress and failure feedback.
 
 ### Phase 3: Complete library behavior
 
-1. Persist albums, favorites, and archive state.
-2. Add photo detail view.
-3. Add deletion and download.
-4. Implement search over indexed metadata.
-5. Replace static storage information with filesystem statistics.
+1. Persist albums, favorites, and archive state. Done.
+2. Add photo detail view. Done; detail displays the protected original, file facts, dimensions, capture/upload metadata, camera/GPS data, and actions.
+3. Add deletion and download. Done.
+4. Implement search over indexed metadata. Partial; current search covers filename/title and location labels.
+5. Replace static storage information with filesystem statistics. Done.
 
 ### Phase 4: Prepare the Pi for long-term use
 
 1. Move originals to a mounted SSD or other durable disk.
-2. Run the app with systemd.
+2. Run the app with systemd. Templates are available under `deploy/`.
 3. Add a reverse proxy and HTTPS if needed for the access model.
 4. Configure Tailscale ACLs for the intended devices and users.
-5. Schedule and regularly test backups.
+5. Schedule and regularly test backups. A daily systemd timer template is available through `deploy/`.
 6. Add health checks and basic application logs.
 
 ## 6. Production Readiness Checklist
@@ -129,12 +144,12 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 - [ ] Original photos are on a separate durable volume.
 - [ ] Every original has a database record.
 - [ ] Uploads reject unsafe or unsupported files.
-- [ ] The app requires authentication or a documented trusted identity boundary.
+- [x] The app requires authentication and fails closed when `AUTH_PASSWORD` is missing; Tailscale remains the private network boundary.
 - [ ] The media directory is not directly exposed by the web server.
 - [ ] Thumbnails are generated and served separately from originals.
-- [ ] Database and originals are backed up independently.
-- [ ] Restore from backup has been tested.
-- [ ] The server starts automatically after a Pi reboot.
+- [x] Database and originals are backed up independently.
+- [ ] Restore from backup has been tested on the Raspberry Pi.
+- [ ] The server starts automatically after a Pi reboot. (Template provided; Pi installation pending.)
 - [ ] Tailscale access is limited to intended devices or users.
 
 ## 7. Definition of Done for the First Real Release
