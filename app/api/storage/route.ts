@@ -23,13 +23,15 @@ async function directoryBytes(directory: string): Promise<number> {
 export async function GET() {
   if (!await isAuthenticated()) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const mediaRoot = process.env.MEDIA_ROOT ?? path.join(process.cwd(), "data", "photos");
+  const appRoot = process.cwd();
   try {
     const filesystem = await statfs(mediaRoot);
     const totalBytes = filesystem.blocks * filesystem.bsize;
     const freeBytes = filesystem.bavail * filesystem.bsize;
     const usedBytes = totalBytes - freeBytes;
     const mediaBytes = await directoryBytes(mediaRoot);
-    return NextResponse.json({ totalBytes, freeBytes, usedBytes, mediaBytes, percentUsed: totalBytes ? Math.round((usedBytes / totalBytes) * 100) : 0, mediaRoot: process.env.MEDIA_ROOT ? "configured" : "local" });
+    const appBytes = await directoryBytes(appRoot);
+    return NextResponse.json({ totalBytes, freeBytes, usedBytes, mediaBytes, appBytes, percentUsed: totalBytes ? Math.round((usedBytes / totalBytes) * 100) : 0, mediaPercent: totalBytes ? Math.min(100, Math.round((mediaBytes / totalBytes) * 100)) : 0, mediaRoot: process.env.MEDIA_ROOT ?? "data/photos" });
   } catch {
     return NextResponse.json({ error: "Storage information unavailable" }, { status: 503 });
   }

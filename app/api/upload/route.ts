@@ -9,6 +9,9 @@ import { getPhotoByChecksum, insertPhoto } from "@/lib/db";
 
 export const runtime = "nodejs";
 
+sharp.cache({ memory: 32, files: 0, items: 20 });
+sharp.concurrency(Number(process.env.SHARP_CONCURRENCY ?? 1));
+
 export async function POST(request: Request) {
   if (!await isAuthenticated()) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const formData = await request.formData();

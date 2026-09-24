@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { createAlbum, listAlbums } from "@/lib/db";
+import { createAlbum, listAlbumCoverFilenames, listAlbums } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   if (!await isAuthenticated()) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  return NextResponse.json({ albums: listAlbums() });
+  const albums = listAlbums().map((album) => ({ ...album, coverUrls: listAlbumCoverFilenames(album.id).map((filename) => `/api/thumbnails/${encodeURIComponent(filename)}`) }));
+  return NextResponse.json({ albums });
 }
 
 export async function POST(request: Request) {
@@ -17,7 +18,8 @@ export async function POST(request: Request) {
   }
   try {
     createAlbum(body.name);
-    return NextResponse.json({ albums: listAlbums() }, { status: 201 });
+    const albums = listAlbums().map((album) => ({ ...album, coverUrls: listAlbumCoverFilenames(album.id).map((filename) => `/api/thumbnails/${encodeURIComponent(filename)}`) }));
+    return NextResponse.json({ albums }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "An album with that name already exists" }, { status: 409 });
   }

@@ -13,6 +13,7 @@ type GalleryPhoto = {
   title: string;
   date: string;
   location: string;
+  year?: number;
   image: string;
   source?: string;
   filename?: string;
@@ -23,90 +24,13 @@ type GalleryPhoto = {
   width?: number;
   height?: number;
   createdAt?: string;
+  capturedAt?: string;
   cameraModel?: string;
   latitude?: number;
   longitude?: number;
   isFavorite?: boolean;
   isArchived?: boolean;
 };
-const photos: GalleryPhoto[] = [
-  {
-    title: "The Dolomites",
-    date: "Sep 08, 2024",
-    location: "Italy",
-    image:
-      "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    title: "A quiet morning",
-    date: "Sep 03, 2024",
-    location: "Home",
-    image:
-      "https://images.unsplash.com/photo-1497250681960-ef046c08a56e?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    title: "Blue hour",
-    date: "Aug 27, 2024",
-    location: "Porto",
-    image:
-      "https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    title: "Summer table",
-    date: "Aug 21, 2024",
-    location: "Lisbon",
-    image:
-      "https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    title: "Old town walk",
-    date: "Aug 19, 2024",
-    location: "Porto",
-    image:
-      "https://images.unsplash.com/photo-1539037116277-4db20889f2d4?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    title: "Late light",
-    date: "Aug 12, 2024",
-    location: "Home",
-    image:
-      "https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    title: "Coastal road",
-    date: "Jul 30, 2024",
-    location: "Portugal",
-    image:
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    title: "Good company",
-    date: "Jul 18, 2024",
-    location: "Lisbon",
-    image:
-      "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1000&q=85",
-  },
-];
-const albums = [
-  {
-    name: "Summer 2024",
-    count: 124,
-    image:
-      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=500&q=80",
-  },
-  {
-    name: "Portugal",
-    count: 86,
-    image:
-      "https://images.unsplash.com/photo-1555881400-74d7acaacd8b?auto=format&fit=crop&w=500&q=80",
-  },
-  {
-    name: "Favorites",
-    count: 32,
-    image:
-      "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=500&q=80",
-  },
-];
 type StoredPhoto = {
   filename: string;
   originalName: string;
@@ -124,11 +48,15 @@ type StoredPhoto = {
   isFavorite?: boolean;
   isArchived?: boolean;
 };
-type AlbumRecord = { id: number; name: string; count: number };
+type AlbumRecord = { id: number; name: string; count: number; createdAt?: string; updatedAt?: string; coverUrls?: string[] };
 type StorageInfo = {
   totalBytes: number;
+  usedBytes: number;
   mediaBytes: number;
+  appBytes: number;
   percentUsed: number;
+  mediaPercent: number;
+  mediaRoot: string;
 };
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -148,6 +76,7 @@ function toGalleryPhoto(photo: StoredPhoto): GalleryPhoto {
       day: "2-digit",
       year: "numeric",
     }),
+    year: new Date(photo.capturedAt).getFullYear(),
     location,
     image: photo.thumbnailUrl ?? photo.url,
     source: "Local upload",
@@ -158,6 +87,7 @@ function toGalleryPhoto(photo: StoredPhoto): GalleryPhoto {
     width: photo.width,
     height: photo.height,
     createdAt: photo.createdAt,
+    capturedAt: photo.capturedAt,
     originalUrl: photo.url,
     cameraModel: photo.cameraModel,
     latitude: photo.latitude,
@@ -171,9 +101,15 @@ export default function Home() {
   const [activeView, setActiveView] = useState("Library");
   const [query, setQuery] = useState("");
   const [uploaded, setUploaded] = useState<string[]>([]);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [storedPhotos, setStoredPhotos] = useState<GalleryPhoto[]>([]);
+  const [albumPhotos, setAlbumPhotos] = useState<GalleryPhoto[]>([]);
   const [realAlbums, setRealAlbums] = useState<AlbumRecord[]>([]);
   const [activeAlbumId, setActiveAlbumId] = useState<number | null>(null);
+  const [activeAlbum, setActiveAlbum] = useState<AlbumRecord | null>(null);
+  const [albumMessage, setAlbumMessage] = useState<string | null>(null);
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
+  const [showCollectionPicker, setShowCollectionPicker] = useState(false);
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
   const [authConfigured, setAuthConfigured] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -183,7 +119,21 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
-  const [demoPhotoState, setDemoPhotoState] = useState<Record<string, { isFavorite?: boolean; isArchived?: boolean }>>({});
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") return "light";
+    const savedTheme = window.localStorage.getItem("lumen-theme") as "light" | "dark" | null;
+    return savedTheme ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  function toggleTheme() {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    window.localStorage.setItem("lumen-theme", nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+  }
   useEffect(() => {
     fetch("/api/auth/session")
       .then((response) => response.json())
@@ -200,33 +150,51 @@ export default function Home() {
             .then((data) => data && setStorageInfo(data));
           return fetch("/api/photos")
             .then((response) => response.json())
-            .then((data) =>
-              setStoredPhotos(
-                data.photos.map((photo: StoredPhoto) => toGalleryPhoto(photo)),
-              ),
-            );
+            .then((data) => {
+              setStoredPhotos(data.photos.map((photo: StoredPhoto) => toGalleryPhoto(photo)));
+            });
         }
       })
       .catch(() => setAuthLoading(false));
   }, []);
-  const galleryPhotos = storedPhotos.length > 0
-    ? storedPhotos
-    : photos.map((photo) => ({ ...photo, ...demoPhotoState[photo.title] }));
+  const galleryPhotos = activeAlbumId !== null ? albumPhotos : storedPhotos;
+  const favoriteCount = storedPhotos.filter((photo) => photo.isFavorite).length;
+  const archiveCount = storedPhotos.filter((photo) => photo.isArchived).length;
+  const libraryCount = storedPhotos.filter((photo) => !photo.isArchived).length;
+  const albumCandidates = activeAlbumId !== null
+    ? storedPhotos.filter((photo) => !albumPhotos.some((member) => member.filename === photo.filename))
+    : [];
+  const collectionCandidates = activeView === "Favorites"
+    ? storedPhotos.filter((photo) => !photo.isFavorite)
+    : activeView === "Archive"
+      ? storedPhotos.filter((photo) => !photo.isArchived)
+      : [];
   const viewPhotos =
     activeView === "Favorites"
       ? galleryPhotos.filter((photo) => photo.isFavorite)
       : activeView === "Archive"
         ? galleryPhotos.filter((photo) => photo.isArchived)
         : galleryPhotos.filter((photo) => !photo.isArchived);
-  const filteredPhotos = useMemo(
-    () =>
-      viewPhotos.filter((photo) =>
-        `${photo.title} ${photo.location}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-      ),
-    [viewPhotos, query],
-  );
+  const filteredPhotos = useMemo(() => {
+    const matchingPhotos = viewPhotos.filter((photo) =>
+      `${photo.title} ${photo.location}`.toLowerCase().includes(query.toLowerCase()),
+    );
+    return [...matchingPhotos].sort((left, right) => {
+      const leftDate = Date.parse(left.capturedAt ?? left.createdAt ?? left.date);
+      const rightDate = Date.parse(right.capturedAt ?? right.createdAt ?? right.date);
+      return sortOrder === "newest" ? rightDate - leftDate : leftDate - rightDate;
+    });
+  }, [viewPhotos, query, sortOrder]);
+  const yearGroups = useMemo(() => {
+    const groups = new Map<number, GalleryPhoto[]>();
+    filteredPhotos.forEach((photo) => {
+      const year = photo.year ?? Number(photo.date.slice(-4));
+      const group = groups.get(year) ?? [];
+      group.push(photo);
+      groups.set(year, group);
+    });
+    return Array.from(groups.entries()).sort(([left], [right]) => right - left);
+  }, [filteredPhotos]);
   const selectedIndex = selectedPhoto
     ? filteredPhotos.findIndex(
         (photo) => (photo.filename ?? photo.title) === (selectedPhoto.filename ?? selectedPhoto.title),
@@ -257,17 +225,25 @@ export default function Home() {
     if (files.length === 0) return;
     const formData = new FormData();
     files.forEach((file) => formData.append("photos", file));
+      event.target.value = "";
     const response = await fetch("/api/upload", {
       method: "POST",
       body: formData,
     });
     if (response.ok) {
-      setUploaded((current) => [...files.map((file) => file.name), ...current]);
+      const result = await response.json();
+      const savedCount = result.saved?.length ?? 0;
+      const duplicateCount = result.duplicates?.length ?? 0;
+      setUploadMessage(`${savedCount} uploaded${duplicateCount ? ` · ${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped` : ""}`);
+      setUploaded((current) => [...(result.saved ?? []), ...current]);
       const refreshed = await fetch("/api/photos");
       const data = await refreshed.json();
       setStoredPhotos(
         data.photos.map((photo: StoredPhoto) => toGalleryPhoto(photo)),
       );
+    } else {
+      const result = await response.json().catch(() => ({}));
+      setUploadMessage(result.error ?? "Upload failed");
     }
   }
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -304,24 +280,8 @@ export default function Home() {
     filename: string | undefined,
     action: "favorite" | "archive",
     value: boolean,
-    photoTitle?: string,
   ) {
-    if (!filename) {
-      const title = photoTitle ?? selectedPhoto?.title;
-      if (!title) return;
-      setDemoPhotoState((current) => ({
-        ...current,
-        [title]: {
-          ...current[title],
-          ...(action === "favorite" ? { isFavorite: value } : { isArchived: value }),
-        },
-      }));
-      setSelectedPhoto((current) => current?.title === title ? {
-          ...current,
-          ...(action === "favorite" ? { isFavorite: value } : { isArchived: value }),
-        } : current);
-      return;
-    }
+    if (!filename) return;
     const response = await fetch(
       `/api/photos/${encodeURIComponent(filename)}`,
       {
@@ -330,19 +290,22 @@ export default function Home() {
         body: JSON.stringify({ action, value }),
       },
     );
-    if (response.ok)
-      setStoredPhotos((current) =>
-        current.map((photo) =>
-          photo.filename === filename
-            ? {
-                ...photo,
-                ...(action === "favorite"
-                  ? { isFavorite: value }
-                  : { isArchived: value }),
-              }
-            : photo,
-        ),
+    if (response.ok) {
+      const applyUpdate = (photo: GalleryPhoto) =>
+        photo.filename === filename
+          ? {
+              ...photo,
+              ...(action === "favorite"
+                ? { isFavorite: value }
+                : { isArchived: value }),
+            }
+          : photo;
+      setStoredPhotos((current) => current.map(applyUpdate));
+      setAlbumPhotos((current) => current.map(applyUpdate));
+      setSelectedPhoto((current) =>
+        current?.filename === filename ? applyUpdate(current) : current,
       );
+    }
   }
   async function deletePhoto(filename: string | undefined) {
     if (
@@ -356,6 +319,9 @@ export default function Home() {
     );
     if (response.ok) {
       setStoredPhotos((current) =>
+        current.filter((photo) => photo.filename !== filename),
+      );
+      setAlbumPhotos((current) =>
         current.filter((photo) => photo.filename !== filename),
       );
       setSelectedPhoto(null);
@@ -374,10 +340,12 @@ export default function Home() {
   async function openAlbum(album: AlbumRecord) {
     setActiveView(album.name);
     setActiveAlbumId(album.id);
+    setActiveAlbum(album);
     const response = await fetch(`/api/albums/${album.id}`);
     if (!response.ok) return;
     const data = await response.json();
-    setStoredPhotos(
+    setActiveAlbum({ ...album, ...data.album });
+    setAlbumPhotos(
       data.photos.map((photo: StoredPhoto) => toGalleryPhoto(photo)),
     );
   }
@@ -388,14 +356,72 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ filename }),
     });
-    if (response.ok)
-      setRealAlbums((current) =>
-        current.map((album) =>
-          album.id === Number(albumId)
-            ? { ...album, count: album.count + 1 }
-            : album,
-        ),
+    if (response.ok) {
+      setAlbumMessage("Photo added to album");
+      const albums = await fetch("/api/albums").then((result) => result.json());
+      setRealAlbums(albums.albums);
+      if (activeAlbumId === Number(albumId)) setActiveAlbum(albums.albums.find((album: AlbumRecord) => album.id === Number(albumId)) ?? null);
+    } else {
+      const data = await response.json().catch(() => ({}));
+      setAlbumMessage(data.error ?? "Could not add photo to album");
+    }
+  }
+  async function removeFromAlbum(filename: string | undefined) {
+    if (!filename || activeAlbumId === null) return;
+    const response = await fetch(`/api/albums/${activeAlbumId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename }),
+    });
+    if (response.ok) {
+      setAlbumMessage("Photo removed from album");
+      setAlbumPhotos((current) =>
+        current.filter((photo) => photo.filename !== filename),
       );
+      const albums = await fetch("/api/albums").then((result) => result.json());
+      setRealAlbums(albums.albums);
+      setActiveAlbum(albums.albums.find((album: AlbumRecord) => album.id === activeAlbumId) ?? null);
+    } else {
+      const data = await response.json().catch(() => ({}));
+      setAlbumMessage(data.error ?? "Could not remove photo from album");
+    }
+  }
+  async function addSelectedPhotosToAlbum(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (activeAlbumId === null) return;
+    const formData = new FormData(event.currentTarget);
+    const filenames = formData.getAll("album-photos").filter((value): value is string => typeof value === "string");
+    for (const filename of filenames) await addToAlbum(String(activeAlbumId), filename);
+    const activeAlbum = realAlbums.find((album) => album.id === activeAlbumId);
+    if (activeAlbum) await openAlbum(activeAlbum);
+    setShowAlbumPicker(false);
+  }
+  async function addSelectedPhotosToCollection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const filenames = formData.getAll("collection-photos").filter((value): value is string => typeof value === "string");
+    const action = activeView === "Favorites" ? "favorite" : "archive";
+    for (const filename of filenames) await togglePhoto(filename, action, true);
+    setShowCollectionPicker(false);
+    if (filenames.length > 0) setAlbumMessage(`${filenames.length} photo${filenames.length === 1 ? "" : "s"} added to ${activeView.toLowerCase()}`);
+  }
+  async function deleteAlbumById(albumId: number) {
+    if (!window.confirm("Delete this album? Photos will not be deleted."))
+      return;
+    const response = await fetch(`/api/albums/${albumId}`, {
+      method: "DELETE",
+    });
+    if (response.ok) {
+      setRealAlbums((current) =>
+        current.filter((album) => album.id !== albumId),
+      );
+      if (activeAlbumId === albumId) {
+        setActiveAlbumId(null);
+        setActiveAlbum(null);
+        setAlbumPhotos([]);
+        setActiveView("Library");
+      }
+    }
   }
 
   if (authLoading)
@@ -525,7 +551,12 @@ export default function Home() {
             <button
               className={`nav-item ${activeView === view ? "active" : ""}`}
               key={view}
-              onClick={() => setActiveView(view)}
+              onClick={() => {
+                setActiveAlbumId(null);
+                setActiveAlbum(null);
+                setAlbumMessage(null);
+                setActiveView(view);
+              }}
             >
               <span className="nav-icon">
                 {view === "Library"
@@ -537,7 +568,10 @@ export default function Home() {
                       : "⌁"}
               </span>
               {view}
-              {view === "Library" && <span className="nav-count">2,481</span>}
+              {view === "Library" && <span className="nav-count">{libraryCount}</span>}
+              {view === "Albums" && <span className="nav-count">{realAlbums.length}</span>}
+              {view === "Favorites" && <span className="nav-count">{favoriteCount}</span>}
+              {view === "Archive" && <span className="nav-count">{archiveCount}</span>}
             </button>
           ))}
         </div>
@@ -547,25 +581,19 @@ export default function Home() {
             <button
               className="plus-button"
               aria-label="Create album"
+              data-tooltip="Create album"
               onClick={createNewAlbum}
             >
               +
             </button>
           </div>
-          {(realAlbums.length > 0 ? realAlbums : albums).map((album, index) => (
+          {realAlbums.map((album) => (
             <button
               className="mini-album"
               key={album.name}
-              onClick={() =>
-                "id" in album ? openAlbum(album) : setActiveView(album.name)
-              }
+              onClick={() => openAlbum(album)}
             >
-              <span
-                className="mini-thumb"
-                style={{
-                  backgroundImage: `url(${"image" in album ? album.image : photos[index % photos.length].image})`,
-                }}
-              />
+              <span className={`mini-thumb ${album.coverUrls?.length ? "has-cover" : "empty-cover"}`} style={album.coverUrls?.[0] ? { backgroundImage: `url(${album.coverUrls[0]})` } : undefined} />
               <span>{album.name}</span>
               <small>{album.count}</small>
             </button>
@@ -573,7 +601,7 @@ export default function Home() {
         </div>
         <div className="storage-card">
           <div className="storage-top">
-            <span>Storage</span>
+            <span>Device storage</span>
             <strong>
               {storageInfo ? `${storageInfo.percentUsed}%` : "--"}
             </strong>
@@ -583,9 +611,10 @@ export default function Home() {
           </div>
           <p>
             {storageInfo
-              ? `${formatBytes(storageInfo.mediaBytes)} of ${formatBytes(storageInfo.totalBytes)} in photos`
+                  ? `Device: ${formatBytes(storageInfo.usedBytes)} of ${formatBytes(storageInfo.totalBytes)}`
               : "Storage information unavailable"}
           </p>
+                {storageInfo && <small className="volume-usage">Photos path: {storageInfo.mediaRoot}<br />Uploaded photos: {formatBytes(storageInfo.mediaBytes)} · Lumen app: {formatBytes(storageInfo.appBytes)}</small>}
           <button>
             Manage storage <span>↗</span>
           </button>
@@ -620,7 +649,10 @@ export default function Home() {
             <kbd>⌘ K</kbd>
           </label>
           <div className="top-actions">
-            <button className="icon-button" aria-label="Notifications">
+            <button className="icon-button" aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} data-tooltip={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} onClick={toggleTheme}>
+              {theme === "dark" ? "☼" : "☾"}
+            </button>
+            <button className="icon-button" aria-label="Notifications" data-tooltip="Notifications">
               ♧
             </button>
             <label className="upload-button">
@@ -644,60 +676,114 @@ export default function Home() {
               <p className="subtitle">
                 {activeView === "Library"
                   ? "Your photos, safe and sound."
-                  : "A curated collection of your memories."}
+                  : activeAlbum
+                    ? `Created ${activeAlbum.createdAt ? new Date(activeAlbum.createdAt).toLocaleDateString() : "Not available"} · Updated ${activeAlbum.updatedAt ? new Date(activeAlbum.updatedAt).toLocaleDateString() : "Not available"}`
+                    : "A curated collection of your memories."}
               </p>
             </div>
-            <button className="sort-button">
-              Newest first <span>⌄</span>
+            <button className="sort-button" onClick={() => setSortOrder((current) => current === "newest" ? "oldest" : "newest")}>
+              {sortOrder === "newest" ? "Newest first" : "Oldest first"} <span>⌄</span>
             </button>
           </div>
+          {activeAlbumId !== null && (
+            <div className="album-toolbar">
+              <button type="button" className="album-add-button" onClick={() => setShowAlbumPicker((current) => !current)}>
+                + Add existing photos
+              </button>
+              <button type="button" className="delete-album-button" onClick={() => deleteAlbumById(activeAlbumId)}>
+                Delete album
+              </button>
+            </div>
+          )}
+          {activeAlbumId !== null && showAlbumPicker && (
+            <form className="album-picker" onSubmit={addSelectedPhotosToAlbum}>
+              <div className="album-picker-header"><strong>Add photos to {activeView}</strong><button type="button" onClick={() => setShowAlbumPicker(false)} aria-label="Close add photos" data-tooltip="Close photo picker">×</button></div>
+              {albumCandidates.length > 0 ? <>
+                <div className="album-picker-grid">{albumCandidates.map((photo) => <label className="album-picker-item" key={photo.filename}><input type="checkbox" name="album-photos" value={photo.filename} /><span className="picker-thumb" style={{ backgroundImage: `url(${photo.image})` }} /><span>{photo.title}</span></label>)}</div>
+                <button className="album-picker-submit" type="submit">Add selected photos</button>
+              </> : <p className="album-picker-empty">All uploaded photos are already in this album.</p>}
+            </form>
+          )}
+          {activeAlbumId === null && (activeView === "Favorites" || activeView === "Archive") && (
+            <>
+              <div className="album-toolbar collection-toolbar">
+                <button type="button" className="album-add-button" onClick={() => setShowCollectionPicker((current) => !current)}>
+                  + Add existing photos
+                </button>
+              </div>
+              {showCollectionPicker && (
+                <form className="album-picker" onSubmit={addSelectedPhotosToCollection}>
+                  <div className="album-picker-header"><strong>Add photos to {activeView}</strong><button type="button" onClick={() => setShowCollectionPicker(false)} aria-label="Close photo picker" data-tooltip="Close photo picker">×</button></div>
+                  {collectionCandidates.length > 0 ? <>
+                    <div className="album-picker-grid">{collectionCandidates.map((photo) => <label className="album-picker-item" key={photo.filename}><input type="checkbox" name="collection-photos" value={photo.filename} /><span className="picker-thumb" style={{ backgroundImage: `url(${photo.image})` }} /><span>{photo.title}</span></label>)}</div>
+                    <button className="album-picker-submit" type="submit">Add selected photos</button>
+                  </> : <p className="album-picker-empty">All uploaded photos are already in this view.</p>}
+                </form>
+              )}
+            </>
+          )}
           {uploaded.length > 0 && (
             <div className="upload-note">
-              <span>✓</span> Ready to index {uploaded.length} new{" "}
+              <span>✓</span> Uploaded {uploaded.length} new{" "}
               {uploaded.length === 1 ? "photo" : "photos"}
               <button onClick={() => setUploaded([])}>Dismiss</button>
             </div>
           )}
+          {uploadMessage && (
+            <div className="upload-note" role="status">
+              <span>i</span> {uploadMessage}
+              <button type="button" onClick={() => setUploadMessage(null)} aria-label="Dismiss upload result" data-tooltip="Dismiss upload result">×</button>
+            </div>
+          )}
+          {albumMessage && (
+            <div className="album-message" role="status">
+              <span>{albumMessage}</span>
+              <button type="button" onClick={() => setAlbumMessage(null)} aria-label="Dismiss album message" data-tooltip="Dismiss message">×</button>
+            </div>
+          )}
           {activeView === "Albums" ? (
-            <div className="album-grid">
-              {(realAlbums.length > 0 ? realAlbums : albums).map(
-                (album, index) => (
+            <div className={realAlbums.length > 0 ? "album-grid" : "empty-state"}>
+              {realAlbums.length > 0 ? realAlbums.map(
+                (album) => (
                   <article
                     className="album-card"
                     key={album.name}
                     onClick={() => "id" in album && openAlbum(album)}
                   >
-                    <div
-                      className="album-cover"
-                      style={{
-                        backgroundImage: `url(${"image" in album ? album.image : photos[index % photos.length].image})`,
-                      }}
-                    />
+                    <div className={`album-cover ${album.coverUrls?.length ? "has-cover" : "empty-cover"}`}>
+                      {album.coverUrls?.map((coverUrl) => <span key={coverUrl} style={{ backgroundImage: `url(${coverUrl})` }} />)}
+                    </div>
                     <div>
                       <h3>{album.name}</h3>
                       <p>{album.count} photos</p>
                     </div>
+                    {"id" in album && (
+                      <button
+                        type="button"
+                        className="album-delete"
+                        aria-label={`Delete ${album.name}`}
+                        data-tooltip={`Delete ${album.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          deleteAlbumById(album.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
                   </article>
                 ),
-              )}
+              ) : <><span>▦</span><h3>No albums yet</h3><p>Create an album with the + button.</p></>}
             </div>
           ) : (
             <>
+              {yearGroups.map(([year, yearPhotos]) => <section className="year-group" key={year}>
               <div className="month-row">
-                <h2>
-                  {activeAlbumId
-                    ? activeView
-                    : activeView === "Favorites"
-                      ? "Favorites"
-                      : activeView === "Archive"
-                        ? "Archive"
-                        : "September"}{" "}
-                  <span>2024</span>
-                </h2>
-                <span>{filteredPhotos.length} photos</span>
+                <h2>{year}</h2>
+                <span>{yearPhotos.length} photos</span>
               </div>
               <div className="photo-grid">
-                {filteredPhotos.map((photo, index) => (
+                {yearPhotos.map((photo, index) => (
                   <article
                     className={`photo-card photo-${index + 1}`}
                     key={photo.filename ?? photo.title}
@@ -717,27 +803,52 @@ export default function Home() {
                       <button
                         className="favorite"
                         aria-label={`${photo.isFavorite ? "Remove from" : "Add to"} favorites`}
+                        data-tooltip={`${photo.isFavorite ? "Remove from" : "Add to"} favorites`}
                         onClick={(event) => {
                           event.stopPropagation();
                           togglePhoto(
                             photo.filename,
                             "favorite",
                             !photo.isFavorite,
-                            photo.title,
                           );
                         }}
                       >
                         {photo.isFavorite ? "♥" : "♡"}
                       </button>
                       {photo.filename && (
-                        <div className="photo-actions">
+                        <div className={`photo-actions ${activeAlbumId !== null ? "album-actions" : ""}`}>
                           <a
                             href={`/api/media/${encodeURIComponent(photo.filename)}?download=1`}
                             onClick={(event) => event.stopPropagation()}
                             aria-label={`Download ${photo.title}`}
+                            data-tooltip="Download original photo"
                           >
                             ↓
                           </a>
+                          {activeAlbumId !== null && (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeFromAlbum(photo.filename);
+                              }}
+                              aria-label={`Remove ${photo.title} from this album`}
+                              data-tooltip="Remove from album"
+                            >
+                              ⊘
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              togglePhoto(photo.filename, "archive", !photo.isArchived);
+                            }}
+                            aria-label={photo.isArchived ? `Restore ${photo.title}` : `Archive ${photo.title}`}
+                            data-tooltip={photo.isArchived ? "Restore from archive" : "Archive photo"}
+                          >
+                            {photo.isArchived ? "↶" : "⌁"}
+                          </button>
                           <button
                             type="button"
                             onClick={(event) => {
@@ -745,6 +856,7 @@ export default function Home() {
                               deletePhoto(photo.filename);
                             }}
                             aria-label={`Delete ${photo.title}`}
+                            data-tooltip="Delete photo"
                           >
                             ×
                           </button>
@@ -777,34 +889,13 @@ export default function Home() {
                   </article>
                 ))}
               </div>
+              </section>)}
               {filteredPhotos.length === 0 && (
                 <div className="empty-state">
                   <span>⌕</span>
                   <h3>No memories found</h3>
                   <p>Try searching for a place or moment.</p>
                 </div>
-              )}
-              {activeView === "Library" && (
-                <>
-                  <div className="month-row second-month">
-                    <h2>
-                      August <span>2024</span>
-                    </h2>
-                    <span>218 photos</span>
-                  </div>
-                  <div className="memory-strip">
-                    <div
-                      style={{ backgroundImage: `url(${photos[1].image})` }}
-                    />
-                    <div
-                      style={{ backgroundImage: `url(${photos[3].image})` }}
-                    />
-                    <div
-                      style={{ backgroundImage: `url(${photos[5].image})` }}
-                    />
-                    <div className="more-memory">+ 215 more</div>
-                  </div>
-                </>
               )}
             </>
           )}
@@ -827,6 +918,7 @@ export default function Home() {
               className="detail-close"
               onClick={() => setSelectedPhoto(null)}
               aria-label="Close photo detail"
+              data-tooltip="Close preview"
             >
               ×
             </button>
@@ -835,6 +927,7 @@ export default function Home() {
               onClick={() => moveSelection(-1)}
               disabled={filteredPhotos.length < 2}
               aria-label="Previous photo"
+              data-tooltip="Previous photo"
             >
               ‹
             </button>
@@ -849,6 +942,7 @@ export default function Home() {
               onClick={() => moveSelection(1)}
               disabled={filteredPhotos.length < 2}
               aria-label="Next photo"
+              data-tooltip="Next photo"
             >
               ›
             </button>
@@ -861,7 +955,7 @@ export default function Home() {
                 <div className="detail-facts">
                   <p>
                     <strong>Source</strong>
-                    {selectedPhoto.source ?? "Sample library"}
+                    {selectedPhoto.source ?? "Local upload"}
                   </p>
                   <p>
                     <strong>Captured</strong>
@@ -879,7 +973,7 @@ export default function Home() {
                   </p>
                   <p>
                     <strong>Type</strong>
-                    {selectedPhoto.mimeType ?? "Remote sample"}
+                    {selectedPhoto.mimeType ?? "Not available"}
                     {selectedPhoto.size ? ` · ${formatBytes(selectedPhoto.size)}` : ""}
                   </p>
                   <p>
@@ -917,6 +1011,17 @@ export default function Home() {
                   }
                 >
                   {selectedPhoto.isFavorite ? "Remove favorite" : "Favorite"}
+                </button>
+                <button
+                  onClick={() =>
+                    togglePhoto(
+                      selectedPhoto.filename,
+                      "archive",
+                      !selectedPhoto.isArchived,
+                    )
+                  }
+                >
+                  {selectedPhoto.isArchived ? "Restore from archive" : "Archive"}
                 </button>
                 <button
                   className="danger-action"

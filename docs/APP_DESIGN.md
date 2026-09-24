@@ -63,22 +63,21 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Responsive photo library layout | Done | Desktop and mobile layouts are implemented, including a bounded scrollable image preview for phone screens. |
+| Responsive photo library layout | Done | Desktop and mobile layouts are implemented, including a bounded scrollable image preview for phone screens and light/dark themes. |
 | Sidebar navigation | Done | Library, Albums, Favorites, and Archive controls are present. |
 | Search field | Partial | Filters the active gallery records by filename/title and location. Metadata search is still limited. |
-| Albums view | Partial | Loads persistent albums and counts when available, with sample cards as an empty-library fallback. |
-| Sample gallery | Demo | Uses remote image placeholders and sample metadata. |
+| Albums view | Done | Loads persistent albums and counts, with an explicit empty state when no albums exist. Open albums support adding/removing existing photos and album deletion. |
 | Multiple photo picker | Done | The UI accepts multiple image files. |
 | Upload API | Done | `POST /api/upload` accepts multipart files, validates them, detects duplicates, and creates metadata records. |
 | Local file persistence | Done | Files are uniquely named, sanitized, and written under `MEDIA_ROOT`. |
 | SQLite metadata index | Partial | Uploads are indexed with file, date, EXIF, dimension, and state metadata. Processing state remains pending. |
-| Display uploaded photos | Done | Indexed uploads are fetched through controlled thumbnail URLs and can be opened in a protected detail view with navigation and detailed image facts. |
-| Favorites and archive state | Partial | Uploaded photo flags persist in SQLite; sample photos update locally for the demo, while bulk actions and full archive controls remain. |
-| Album creation | Partial | Named albums persist in SQLite through `/api/albums`; photo membership and album browsing are now implemented. |
+| Display uploaded photos | Done | Persisted uploads are fetched through controlled thumbnail URLs, grouped by capture/upload year, and can be opened in a protected detail view. |
+| Favorites and archive state | Partial | Favorite/archive flags persist in SQLite and favorites/archive views filter correctly; visible archive/unarchive actions and bulk actions remain. |
+| Album creation | Done | Named albums persist in SQLite through `/api/albums`; photos can be added, removed, and albums can be deleted. Viewing an album no longer overwrites the main library list. |
 | Controlled media serving | Done | Indexed files are served through `/api/media/[filename]` and `/api/thumbnails/[filename]`; the app fails closed when authentication is not configured. |
 | Upload confirmation state | Done | The UI shows the number of newly accepted uploads. |
 | Tailscale/private-library presentation | Done | The UI and documentation assume private access. Actual Tailscale configuration is external to this app. |
-| Storage indicator | Done | The sidebar reads filesystem capacity and indexed media bytes from the protected storage API. |
+| Storage indicator | Done | The sidebar uses whole-device usage for the bar and separates uploaded-photo and Lumen application footprints. |
 | Production build | Done | `npm run build` passes. |
 | Linting | Done | `npm run lint` passes. |
 
@@ -90,8 +89,8 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 | SQLite metadata index | Partial | P0 | Tracks filename, type, size, dimensions, dates, EXIF, and state metadata. Processing state remains. |
 | Thumbnail generation | Done | P0 | Uploads generate 640px WebP thumbnails and the gallery uses their controlled URL. |
 | Real dates and EXIF data | Done | P1 | Extract capture date, camera model, and GPS coordinates when available; upload time is the fallback. |
-| Persistent albums | Done | P1 | Album records, membership tables, album browsing, counts, and photo assignment are implemented. |
-| Favorites and archive | Partial | P1 | Favorite/archive state is persisted and filterable; richer management actions remain. |
+| Persistent albums | Done | P1 | Album records, membership tables, album browsing, counts, photo assignment/removal, multi-photo picker, and album deletion are implemented. |
+| Favorites and archive | Partial | P1 | Favorite/archive state is persisted and filterable; visible archive/unarchive actions and bulk management remain. |
 | Accurate storage usage | Done | P1 | Calculate filesystem usage and media-directory bytes from the configured volume. |
 | Delete and download | Done | P1 | Protected original download and confirmed deletion remove database memberships, originals, and thumbnails together. |
 | Authentication | Done | P0 | Password authentication with HTTP-only signed session cookies protects the UI and media APIs. The app fails closed when `AUTH_PASSWORD` is missing; set `AUTH_COOKIE_SECURE=true` only behind HTTPS. |
@@ -104,14 +103,27 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 | systemd service | Partial | P1 | App and daily backup unit/timer templates exist under `deploy/`; they must be installed and configured on the Pi. |
 | Offline/native clients | Not started | P2 | Consider only after the browser workflow is reliable. |
 
-## 5. Recommended Development Roadmap
+## 4a. Known Performance Issues (Image Loading)
+
+Reported: gallery image loading feels very slow. Root causes identified:
+
+1. **No lazy loading.** Grid photos render as CSS `background-image` divs, not `<img loading="lazy">`, so every photo in a view starts downloading immediately regardless of scroll position.
+2. **Per-request auth overhead.** `/api/media` and `/api/thumbnails` re-run `isAuthenticated()` (cookie parse + HMAC compare) and a SQLite lookup on every single image request.
+3. **HTTP/1.1 connection limits.** Browsers cap concurrent connections per origin (~6); with no lazy loading, all image requests queue and serialize.
+4. **No conditional caching (ETag/Last-Modified).** Only `Cache-Control: max-age=3600` is set; there is no cheap 304 revalidation path.
+5. **Streamed per-request disk reads** instead of a static-file-optimized path; a smaller factor but adds overhead on constrained hardware (Raspberry Pi).
+6. **`npm run build` was silently failing** (TypeScript error in `app/api/albums/route.ts` from an untyped `listAlbums()` return), which meant testing was happening against the slower `next dev` server instead of a production build. Fixed by adding an explicit `AlbumSummary` return type to `listAlbums()` in `lib/db.ts`.
+
+Planned fixes, in order: (1) lazy-load grid thumbnails, (2) add ETag/Last-Modified to media/thumbnail routes, (3) verify production build is used for perf testing, (4) consider a smaller dedicated grid-thumbnail size separate from the 640px preview thumbnail.
+
+
 
 ### Phase 1: Make the library real
 
 1. Add a SQLite database. Done.
 2. Create a photo record for every successful upload. Done.
 3. Add a read API that returns photo records and thumbnail URLs. Done.
-4. Replace sample gallery records with API data. Done, with sample fallback for an empty database.
+4. Replace sample gallery records with API data. Done; the gallery is persisted-data-only.
 5. Serve originals and thumbnails through controlled routes. Done.
 
 ### Phase 2: Make uploads safe and useful
@@ -124,10 +136,10 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 
 ### Phase 3: Complete library behavior
 
-1. Persist albums, favorites, and archive state. Done.
+1. Persist albums, favorites, and archive state. Done; archive controls are the next UI refinement.
 2. Add photo detail view. Done; detail displays the protected original, file facts, dimensions, capture/upload metadata, camera/GPS data, and actions.
 3. Add deletion and download. Done.
-4. Implement search over indexed metadata. Partial; current search covers filename/title and location labels.
+4. Implement search over indexed metadata. Partial; current search covers filename/title and location labels, while display grouping uses capture year with upload-time fallback.
 5. Replace static storage information with filesystem statistics. Done.
 
 ### Phase 4: Prepare the Pi for long-term use
@@ -141,7 +153,7 @@ Photo files should live outside the Git repository on a durable mounted disk. Th
 
 ## 6. Production Readiness Checklist
 
-- [ ] Original photos are on a separate durable volume.
+- [ ] Original photos are on a separate durable volume. Raspberry Pi deployment is currently paused.
 - [ ] Every original has a database record.
 - [ ] Uploads reject unsafe or unsupported files.
 - [x] The app requires authentication and fails closed when `AUTH_PASSWORD` is missing; Tailscale remains the private network boundary.

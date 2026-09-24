@@ -14,5 +14,5 @@ export async function GET() {
       : `/api/media/${encodeURIComponent(photo.filename)}`,
   }));
 
-  return NextResponse.json({ photos });
+  return NextResponse.json({ photos, count: photos.length });
 }

@@ -50,6 +50,9 @@ database.exec(`
   if (!columns.some((column) => column.name === "height")) database.exec("ALTER TABLE photos ADD COLUMN height INTEGER");
   database.exec("CREATE UNIQUE INDEX IF NOT EXISTS photos_checksum_unique ON photos(checksum) WHERE checksum IS NOT NULL");
   database.exec("CREATE TABLE IF NOT EXISTS albums (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL)");
+  const albumColumns = database.prepare("PRAGMA table_info(albums)").all() as { name: string }[];
+  if (!albumColumns.some((column) => column.name === "updated_at")) database.exec("ALTER TABLE albums ADD COLUMN updated_at TEXT");
+  database.exec("UPDATE albums SET updated_at = created_at WHERE updated_at IS NULL");
   database.exec("CREATE TABLE IF NOT EXISTS album_photos (album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE, photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE, PRIMARY KEY (album_id, photo_id))");
 
 export function insertPhoto(photo: Omit<PhotoRecord, "id">) {
@@ -79,12 +82,18 @@ export function deletePhoto(filename: string) {
   return remove();
 }
 
-export function listAlbums() {
-  return database.prepare("SELECT albums.id, albums.name, COUNT(album_photos.photo_id) AS count FROM albums LEFT JOIN album_photos ON album_photos.album_id = albums.id GROUP BY albums.id ORDER BY albums.created_at DESC").all();
+export type AlbumSummary = { id: number; name: string; createdAt: string; updatedAt: string; count: number; cover_filename: string | null };
+
+export function listAlbums(): AlbumSummary[] {
+  return database.prepare("SELECT albums.id, albums.name, albums.created_at AS createdAt, albums.updated_at AS updatedAt, COUNT(album_photos.photo_id) AS count, (SELECT photos.filename FROM album_photos AS cover_membership INNER JOIN photos ON photos.id = cover_membership.photo_id WHERE cover_membership.album_id = albums.id ORDER BY photos.captured_at DESC, photos.id DESC LIMIT 1) AS cover_filename FROM albums LEFT JOIN album_photos ON album_photos.album_id = albums.id GROUP BY albums.id ORDER BY albums.created_at DESC").all() as AlbumSummary[];
 }
 
 export function getAlbum(id: number) {
-  return database.prepare("SELECT id, name FROM albums WHERE id = ?").get(id) as { id: number; name: string } | undefined;
+  return database.prepare("SELECT id, name, created_at AS createdAt, updated_at AS updatedAt FROM albums WHERE id = ?").get(id) as { id: number; name: string; createdAt: string; updatedAt: string } | undefined;
+}
+
+export function listAlbumCoverFilenames(albumId: number): string[] {
+  return database.prepare("SELECT photos.filename FROM album_photos INNER JOIN photos ON photos.id = album_photos.photo_id WHERE album_photos.album_id = ? ORDER BY photos.captured_at DESC, photos.id DESC LIMIT 4").all(albumId).map((photo) => (photo as { filename: string }).filename);
 }
 
 export function listAlbumPhotos(id: number): PhotoRecord[] {
@@ -92,11 +101,38 @@ export function listAlbumPhotos(id: number): PhotoRecord[] {
 }
 
 export function addPhotoToAlbum(albumId: number, filename: string) {
-  return database.prepare("INSERT OR IGNORE INTO album_photos (album_id, photo_id) SELECT ?, id FROM photos WHERE filename = ?").run(albumId, filename);
+  const add = database.transaction(() => {
+    const result = database.prepare("INSERT OR IGNORE INTO album_photos (album_id, photo_id) SELECT ?, id FROM photos WHERE filename = ?").run(albumId, filename);
+    if (result.changes > 0) database.prepare("UPDATE albums SET updated_at = ? WHERE id = ?").run(new Date().toISOString(), albumId);
+    return result;
+  });
+  return add();
+}
+
+export function photoIsInAlbum(albumId: number, filename: string) {
+  return Boolean(database.prepare("SELECT 1 FROM album_photos INNER JOIN photos ON photos.id = album_photos.photo_id WHERE album_photos.album_id = ? AND photos.filename = ?").get(albumId, filename));
+}
+
+export function removePhotoFromAlbum(albumId: number, filename: string) {
+  const remove = database.transaction(() => {
+    const result = database.prepare("DELETE FROM album_photos WHERE album_id = ? AND photo_id = (SELECT id FROM photos WHERE filename = ?)").run(albumId, filename);
+    if (result.changes > 0) database.prepare("UPDATE albums SET updated_at = ? WHERE id = ?").run(new Date().toISOString(), albumId);
+    return result;
+  });
+  return remove();
 }
 
 export function createAlbum(name: string) {
-  return database.prepare("INSERT INTO albums (name, created_at) VALUES (?, ?)").run(name.trim(), new Date().toISOString());
+  const timestamp = new Date().toISOString();
+  return database.prepare("INSERT INTO albums (name, created_at, updated_at) VALUES (?, ?, ?)").run(name.trim(), timestamp, timestamp);
+}
+
+export function deleteAlbum(id: number) {
+  const remove = database.transaction(() => {
+    database.prepare("DELETE FROM album_photos WHERE album_id = ?").run(id);
+    return database.prepare("DELETE FROM albums WHERE id = ?").run(id);
+  });
+  return remove();
 }
 
 export function getPhotoByChecksum(checksum: string): PhotoRecord | undefined {

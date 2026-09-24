@@ -1,11 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  allowedDevOrigins: ["100.109.24.11"],
+  serverExternalPackages: ["better-sqlite3", "sharp"],
 };
-
-module.exports = {
-  allowedDevOrigins: ['100.109.24.11'],
-}
 
 export default nextConfig;
